@@ -1,3 +1,4 @@
+import math
 import string
 
 from hypothesis import example, given
@@ -6,6 +7,7 @@ import pytest
 import voluptuous as vol
 
 from esphome import config_validation
+from esphome.components.const import UNIT_FAHRENHEIT
 from esphome.components.esp32 import (
     VARIANT_ESP32,
     VARIANT_ESP32C2,
@@ -17,6 +19,13 @@ from esphome.components.esp32 import (
 )
 from esphome.config_validation import Invalid
 from esphome.const import (
+    CONF_CURRENT_TEMPERATURE,
+    CONF_MAX_TEMPERATURE,
+    CONF_MIN_TEMPERATURE,
+    CONF_TARGET_TEMPERATURE,
+    CONF_TEMPERATURE_STEP,
+    CONF_UNIT_OF_MEASUREMENT,
+    CONF_VISUAL,
     PLATFORM_BK72XX,
     PLATFORM_ESP32,
     PLATFORM_ESP8266,
@@ -24,7 +33,8 @@ from esphome.const import (
     PLATFORM_LN882X,
     PLATFORM_RP2040,
     PLATFORM_RTL87XX,
-    SCHEDULER_DONT_RUN,
+    UNIT_CELSIUS,
+    UNIT_KELVIN,
 )
 from esphome.core import CORE, HexInt, Lambda
 
@@ -573,7 +583,7 @@ def test_string_no_slash__empty() -> None:
 
 @pytest.mark.parametrize("value", ("Temperature", "Living Room Light", "温度传感器"))
 def test_validate_entity_name__valid(value: str) -> None:
-    actual = config_validation._validate_entity_name(value)
+    actual = config_validation._validate_entity_name(value)  # pylint: disable=protected-access
     assert actual == value
 
 
@@ -581,40 +591,40 @@ def test_validate_entity_name__slash_replaced_with_warning(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Test that '/' in entity names is auto-replaced with fraction slash."""
-    actual = config_validation._validate_entity_name("has/slash")
+    actual = config_validation._validate_entity_name("has/slash")  # pylint: disable=protected-access
     assert actual == "has⁄slash"
     assert "reserved as a URL path separator" in caplog.text
 
 
 def test_validate_entity_name__max_length() -> None:
     # 120 bytes should pass
-    assert config_validation._validate_entity_name("x" * 120) == "x" * 120
+    assert config_validation._validate_entity_name("x" * 120) == "x" * 120  # pylint: disable=protected-access
 
     # 121 bytes should fail
     with pytest.raises(Invalid, match="too long.*121 bytes.*Maximum.*120"):
-        config_validation._validate_entity_name("x" * 121)
+        config_validation._validate_entity_name("x" * 121)  # pylint: disable=protected-access
 
 
 def test_validate_entity_name__multibyte_byte_length() -> None:
     # 40 chars of 3-byte UTF-8 = 120 bytes, should pass
-    assert config_validation._validate_entity_name("温" * 40) == "温" * 40
+    assert config_validation._validate_entity_name("温" * 40) == "温" * 40  # pylint: disable=protected-access
 
     # 41 chars of 3-byte UTF-8 = 123 bytes, should fail (over 120 byte limit)
     with pytest.raises(Invalid, match="too long.*123 bytes.*Maximum.*120"):
-        config_validation._validate_entity_name("温" * 41)
+        config_validation._validate_entity_name("温" * 41)  # pylint: disable=protected-access
 
 
 def test_validate_entity_name__none_without_friendly_name() -> None:
     # When name is "None" and friendly_name is not set, it should fail
     CORE.friendly_name = None
     with pytest.raises(Invalid, match="friendly_name is not set"):
-        config_validation._validate_entity_name("None")
+        config_validation._validate_entity_name("None")  # pylint: disable=protected-access
 
 
 def test_validate_entity_name__none_with_friendly_name() -> None:
     # When name is "None" but friendly_name is set, it should return None
     CORE.friendly_name = "My Device"
-    result = config_validation._validate_entity_name("None")
+    result = config_validation._validate_entity_name("None")  # pylint: disable=protected-access
     assert result is None
     CORE.friendly_name = None  # Reset
 
@@ -768,28 +778,322 @@ def test_percentage_validators__raw_number_above_one_without_percent_sign(
         config_validation.unbounded_possibly_negative_percentage(value)
 
 
-def test_update_interval__coerces_zero_to_one_ms(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """update_interval: 0ms must be coerced to 1ms (not rejected) because a
-    literal 0ms schedule causes Scheduler::call() to spin. Coercion keeps
-    existing configs compiling on upgrade while emitting a user-facing
-    warning that directs them to set a non-zero value."""
-    with caplog.at_level("WARNING"):
-        result = config_validation.update_interval("0ms")
-    assert result.total_milliseconds == 1
-    assert "update_interval of 0ms is not supported" in caplog.text
-    assert "1ms" in caplog.text
+# ---------------------------------------------------------------------------
+# temperature and temperature_delta
+# ---------------------------------------------------------------------------
 
 
-def test_update_interval__preserves_nonzero_values() -> None:
-    """Non-zero update_interval values must pass through unchanged."""
-    assert config_validation.update_interval("1ms").total_milliseconds == 1
-    assert config_validation.update_interval("50ms").total_milliseconds == 50
-    assert config_validation.update_interval("60s").total_milliseconds == 60000
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("0°C", 0.0),
+        ("20C", 20.0),
+        ("20", 20.0),
+        ("373.15K", 100.0),
+        ("373.15°K", 100.0),
+        ("32°F", 0.0),
+        ("212F", 100.0),
+    ],
+)
+def test_temperature__valid(value, expected) -> None:
+    assert math.isclose(config_validation.temperature(value), expected, abs_tol=1e-4)
 
 
-def test_update_interval__never_passes_through() -> None:
-    """update_interval: never must still map to SCHEDULER_DONT_RUN."""
-    result = config_validation.update_interval("never")
-    assert result.total_milliseconds == SCHEDULER_DONT_RUN
+def test_temperature__invalid() -> None:
+    with pytest.raises(Invalid):
+        config_validation.temperature(None)
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("1°C", 1.0),
+        ("1C", 1.0),
+        ("1", 1.0),
+        ("1K", 1.0),
+        ("1.8°F", 1.8 * 5 / 9),
+    ],
+)
+def test_temperature_delta__valid(value, expected) -> None:
+    assert math.isclose(
+        config_validation.temperature_delta(value), expected, abs_tol=1e-4
+    )
+
+
+def test_temperature_delta__invalid() -> None:
+    with pytest.raises(Invalid):
+        config_validation.temperature_delta(None)
+
+
+# ---------------------------------------------------------------------------
+# temperature_with_unit
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "value, expected_raw, expected_unit",
+    [
+        ("100°F", 100.0, UNIT_FAHRENHEIT),
+        ("100 °F", 100.0, UNIT_FAHRENHEIT),
+        ("100F", 100.0, UNIT_FAHRENHEIT),
+        ("100°C", 100.0, UNIT_CELSIUS),
+        ("100C", 100.0, UNIT_CELSIUS),
+        ("373.15K", 373.15, UNIT_KELVIN),
+        ("373.15°K", 373.15, UNIT_KELVIN),
+        # No unit: raw value returned, unit is None
+        ("100", 100.0, None),
+        ("100°", 100.0, None),
+        (100, 100.0, None),
+    ],
+)
+def test_temperature_with_unit__valid(value, expected_raw, expected_unit) -> None:
+    raw, unit = config_validation.temperature_with_unit(value)
+    assert math.isclose(raw, expected_raw, rel_tol=1e-6)
+    assert unit == expected_unit
+
+
+@pytest.mark.parametrize("value", ("not_a_number", "abc°F", None))
+def test_temperature_with_unit__invalid(value) -> None:
+    with pytest.raises(Invalid):
+        config_validation.temperature_with_unit(value)
+
+
+# ---------------------------------------------------------------------------
+# visual_temperature_step
+# ---------------------------------------------------------------------------
+
+
+def test_visual_temperature_step__scalar() -> None:
+    """A scalar value sets both target and current to the same value."""
+    result = config_validation.visual_temperature_step("1°F")
+    assert result[CONF_TARGET_TEMPERATURE] == (1.0, UNIT_FAHRENHEIT)
+    assert result[CONF_CURRENT_TEMPERATURE] == (1.0, UNIT_FAHRENHEIT)
+
+
+def test_visual_temperature_step__scalar_no_unit() -> None:
+    result = config_validation.visual_temperature_step("0.5")
+    assert result[CONF_TARGET_TEMPERATURE] == (0.5, None)
+    assert result[CONF_CURRENT_TEMPERATURE] == (0.5, None)
+
+
+def test_visual_temperature_step__dict_separate_values() -> None:
+    result = config_validation.visual_temperature_step(
+        {
+            CONF_TARGET_TEMPERATURE: "1°F",
+            CONF_CURRENT_TEMPERATURE: "0.5°F",
+        }
+    )
+    assert result[CONF_TARGET_TEMPERATURE] == (1.0, UNIT_FAHRENHEIT)
+    assert result[CONF_CURRENT_TEMPERATURE] == (0.5, UNIT_FAHRENHEIT)
+
+
+def test_visual_temperature_step__dict_missing_key_invalid() -> None:
+    with pytest.raises(Invalid):
+        config_validation.visual_temperature_step({CONF_TARGET_TEMPERATURE: "1°F"})
+
+
+# ---------------------------------------------------------------------------
+# validate_temperature_config
+# ---------------------------------------------------------------------------
+
+
+def _make_config(uom=None, visual=None):
+    """Helper to build a minimal config dict for validate_temperature_config."""
+    config = {CONF_VISUAL: visual or {}}
+    if uom is not None:
+        config[CONF_UNIT_OF_MEASUREMENT] = uom
+    return config
+
+
+def test_validate_temperature_config__empty_visual_defaults_to_celsius() -> None:
+    """No temperatures and no UOM: UOM defaults to Celsius."""
+    result = config_validation.validate_temperature_config(_make_config())
+    assert result[CONF_UNIT_OF_MEASUREMENT] == UNIT_CELSIUS
+
+
+def test_validate_temperature_config__explicit_uom_fahrenheit_no_conversion() -> None:
+    """Explicit UOM=°F with °F temps: values stored as-is (no conversion)."""
+    config = _make_config(
+        uom=UNIT_FAHRENHEIT,
+        visual={
+            CONF_MIN_TEMPERATURE: (100.0, UNIT_FAHRENHEIT),
+            CONF_MAX_TEMPERATURE: (145.0, UNIT_FAHRENHEIT),
+        },
+    )
+    result = config_validation.validate_temperature_config(config)
+    assert result[CONF_UNIT_OF_MEASUREMENT] == UNIT_FAHRENHEIT
+    assert math.isclose(result[CONF_VISUAL][CONF_MIN_TEMPERATURE], 100.0)
+    assert math.isclose(result[CONF_VISUAL][CONF_MAX_TEMPERATURE], 145.0)
+
+
+def test_validate_temperature_config__explicit_uom_celsius() -> None:
+    """Explicit UOM=°C: values stored as-is."""
+    config = _make_config(
+        uom=UNIT_CELSIUS,
+        visual={CONF_MIN_TEMPERATURE: (18.0, UNIT_CELSIUS)},
+    )
+    result = config_validation.validate_temperature_config(config)
+    assert result[CONF_UNIT_OF_MEASUREMENT] == UNIT_CELSIUS
+    assert math.isclose(result[CONF_VISUAL][CONF_MIN_TEMPERATURE], 18.0)
+
+
+def test_validate_temperature_config__explicit_uom_kelvin() -> None:
+    """Explicit UOM=K: values stored as-is."""
+    config = _make_config(
+        uom=UNIT_KELVIN,
+        visual={CONF_MIN_TEMPERATURE: (293.15, UNIT_KELVIN)},
+    )
+    result = config_validation.validate_temperature_config(config)
+    assert result[CONF_UNIT_OF_MEASUREMENT] == UNIT_KELVIN
+    assert math.isclose(result[CONF_VISUAL][CONF_MIN_TEMPERATURE], 293.15)
+
+
+def test_validate_temperature_config__implicit_fahrenheit_legacy_conversion() -> None:
+    """No explicit UOM but °F suffixes: legacy path converts to Celsius, sets UOM=°C."""
+    config = _make_config(
+        visual={CONF_MIN_TEMPERATURE: (32.0, UNIT_FAHRENHEIT)},
+    )
+    result = config_validation.validate_temperature_config(config)
+    assert result[CONF_UNIT_OF_MEASUREMENT] == UNIT_CELSIUS
+    # 32°F → 0°C
+    assert math.isclose(result[CONF_VISUAL][CONF_MIN_TEMPERATURE], 0.0, abs_tol=1e-6)
+
+
+def test_validate_temperature_config__implicit_kelvin_legacy_conversion() -> None:
+    """No explicit UOM but K suffixes: legacy path converts to Celsius, sets UOM=°C."""
+    config = _make_config(
+        visual={CONF_MIN_TEMPERATURE: (273.15, UNIT_KELVIN)},
+    )
+    result = config_validation.validate_temperature_config(config)
+    assert result[CONF_UNIT_OF_MEASUREMENT] == UNIT_CELSIUS
+    # 273.15 K → 0°C
+    assert math.isclose(result[CONF_VISUAL][CONF_MIN_TEMPERATURE], 0.0, abs_tol=1e-6)
+
+
+def test_validate_temperature_config__implicit_celsius_no_conversion() -> None:
+    """No explicit UOM, °C suffix: stored as-is, UOM=°C."""
+    config = _make_config(
+        visual={CONF_MIN_TEMPERATURE: (18.0, UNIT_CELSIUS)},
+    )
+    result = config_validation.validate_temperature_config(config)
+    assert result[CONF_UNIT_OF_MEASUREMENT] == UNIT_CELSIUS
+    assert math.isclose(result[CONF_VISUAL][CONF_MIN_TEMPERATURE], 18.0)
+
+
+def test_validate_temperature_config__no_unit_suffix_defaults_celsius() -> None:
+    """Temperature field with no unit suffix: stored as-is, UOM=°C."""
+    config = _make_config(
+        visual={CONF_MIN_TEMPERATURE: (18.0, None)},
+    )
+    result = config_validation.validate_temperature_config(config)
+    assert result[CONF_UNIT_OF_MEASUREMENT] == UNIT_CELSIUS
+    assert math.isclose(result[CONF_VISUAL][CONF_MIN_TEMPERATURE], 18.0)
+
+
+def test_validate_temperature_config__mixed_units_legacy_converts_independently() -> (
+    None
+):
+    """No UOM with mixed unit suffixes: each field is converted to °C independently."""
+    config = _make_config(
+        visual={
+            CONF_MIN_TEMPERATURE: (18.0, UNIT_CELSIUS),
+            CONF_MAX_TEMPERATURE: (86.0, UNIT_FAHRENHEIT),
+        },
+    )
+    result = config_validation.validate_temperature_config(config)
+    assert result[CONF_UNIT_OF_MEASUREMENT] == UNIT_CELSIUS
+    assert math.isclose(result[CONF_VISUAL][CONF_MIN_TEMPERATURE], 18.0)
+    # 86°F → 30°C
+    assert math.isclose(result[CONF_VISUAL][CONF_MAX_TEMPERATURE], 30.0, abs_tol=1e-4)
+
+
+def test_validate_temperature_config__uom_converts_mismatched_field_unit() -> None:
+    """Explicit UOM with a field in a different unit: field is converted to the UOM."""
+    config = _make_config(
+        uom=UNIT_FAHRENHEIT,
+        visual={CONF_MIN_TEMPERATURE: (0.0, UNIT_CELSIUS)},
+    )
+    result = config_validation.validate_temperature_config(config)
+    assert result[CONF_UNIT_OF_MEASUREMENT] == UNIT_FAHRENHEIT
+    # 0°C → 32°F
+    assert math.isclose(result[CONF_VISUAL][CONF_MIN_TEMPERATURE], 32.0, abs_tol=1e-4)
+
+
+def test_validate_temperature_config__temperature_step_scalar() -> None:
+    """Scalar temperature_step (water_heater style) is stored as a plain float."""
+    config = _make_config(
+        uom=UNIT_FAHRENHEIT,
+        visual={CONF_TEMPERATURE_STEP: (1.0, UNIT_FAHRENHEIT)},
+    )
+    result = config_validation.validate_temperature_config(config)
+    assert math.isclose(result[CONF_VISUAL][CONF_TEMPERATURE_STEP], 1.0)
+
+
+def test_validate_temperature_config__temperature_step_scalar_legacy_conversion() -> (
+    None
+):
+    """Scalar °F step with no UOM (legacy): converted as a relative delta (no offset)."""
+    config = _make_config(
+        visual={CONF_TEMPERATURE_STEP: (1.0, UNIT_FAHRENHEIT)},
+    )
+    result = config_validation.validate_temperature_config(config)
+    # 1°F delta → 1 * (5/9) °C delta
+    assert math.isclose(
+        result[CONF_VISUAL][CONF_TEMPERATURE_STEP], 1.0 * 5.0 / 9.0, rel_tol=1e-6
+    )
+
+
+def test_validate_temperature_config__temperature_step_dict_climate_style() -> None:
+    """Dict temperature_step (climate style) processes target and current separately."""
+    config = _make_config(
+        uom=UNIT_FAHRENHEIT,
+        visual={
+            CONF_TEMPERATURE_STEP: {
+                CONF_TARGET_TEMPERATURE: (1.0, UNIT_FAHRENHEIT),
+                CONF_CURRENT_TEMPERATURE: (0.5, UNIT_FAHRENHEIT),
+            }
+        },
+    )
+    result = config_validation.validate_temperature_config(config)
+    step = result[CONF_VISUAL][CONF_TEMPERATURE_STEP]
+    assert math.isclose(step[CONF_TARGET_TEMPERATURE], 1.0)
+    assert math.isclose(step[CONF_CURRENT_TEMPERATURE], 0.5)
+
+
+def test_validate_temperature_config__temperature_step_dict_legacy_conversion() -> None:
+    """Dict °F step with no UOM (legacy): each sub-value converted as relative delta."""
+    config = _make_config(
+        visual={
+            CONF_TEMPERATURE_STEP: {
+                CONF_TARGET_TEMPERATURE: (1.8, UNIT_FAHRENHEIT),
+                CONF_CURRENT_TEMPERATURE: (0.9, UNIT_FAHRENHEIT),
+            }
+        },
+    )
+    result = config_validation.validate_temperature_config(config)
+    step = result[CONF_VISUAL][CONF_TEMPERATURE_STEP]
+    assert math.isclose(step[CONF_TARGET_TEMPERATURE], 1.8 * 5.0 / 9.0, rel_tol=1e-6)
+    assert math.isclose(step[CONF_CURRENT_TEMPERATURE], 0.9 * 5.0 / 9.0, rel_tol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# unit_of_measurement
+# ---------------------------------------------------------------------------
+
+
+def test_unit_of_measurement__valid() -> None:
+    validator = config_validation.unit_of_measurement(max_length=8)
+    assert validator("°C") == "°C"
+    assert validator("°F") == "°F"
+
+
+def test_unit_of_measurement__too_long() -> None:
+    validator = config_validation.unit_of_measurement(max_length=4)
+    with pytest.raises(Invalid):
+        validator("toolong!")
+
+
+def test_unit_of_measurement__non_string() -> None:
+    validator = config_validation.unit_of_measurement(max_length=8)
+    with pytest.raises(Invalid):
+        validator(42)
