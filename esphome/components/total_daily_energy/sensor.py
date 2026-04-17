@@ -12,6 +12,7 @@ from esphome.const import (
     DEVICE_CLASS_ENERGY,
     STATE_CLASS_TOTAL_INCREASING,
 )
+from esphome.core.config import UNIT_OF_MEASUREMENT_MAX_LENGTH
 from esphome.core.entity_helpers import inherit_property_from
 
 DEPENDENCIES = ["time"]
@@ -64,7 +65,9 @@ FINAL_VALIDATE_SCHEMA = cv.All(
         {
             cv.Required(CONF_ID): cv.use_id(TotalDailyEnergy),
             cv.Optional(CONF_ICON): cv.icon,
-            cv.Optional(CONF_UNIT_OF_MEASUREMENT): sensor.validate_unit_of_measurement,
+            cv.Optional(CONF_UNIT_OF_MEASUREMENT): cv.unit_of_measurement(
+                UNIT_OF_MEASUREMENT_MAX_LENGTH
+            ),
             cv.Optional(CONF_ACCURACY_DECIMALS): sensor.validate_accuracy_decimals,
             cv.Required(CONF_POWER_ID): cv.use_id(sensor.Sensor),
         },

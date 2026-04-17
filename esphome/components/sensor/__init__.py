@@ -291,11 +291,6 @@ ClampFilter = sensor_ns.class_("ClampFilter", Filter)
 RoundFilter = sensor_ns.class_("RoundFilter", Filter)
 RoundMultipleFilter = sensor_ns.class_("RoundMultipleFilter", Filter)
 
-validate_unit_of_measurement = cv.All(
-    cv.string_strict,
-    # Keep in sync with max_data_length in api.proto
-    cv.ByteLength(max=UNIT_OF_MEASUREMENT_MAX_LENGTH),
-)
 validate_accuracy_decimals = cv.int_
 validate_icon = cv.icon
 validate_device_class = cv.one_of(*DEVICE_CLASSES, lower=True, space="_")
@@ -308,7 +303,9 @@ _SENSOR_SCHEMA = (
         {
             cv.OnlyWith(CONF_MQTT_ID, "mqtt"): cv.declare_id(mqtt.MQTTSensorComponent),
             cv.GenerateID(): cv.declare_id(Sensor),
-            cv.Optional(CONF_UNIT_OF_MEASUREMENT): validate_unit_of_measurement,
+            cv.Optional(CONF_UNIT_OF_MEASUREMENT): cv.unit_of_measurement(
+                UNIT_OF_MEASUREMENT_MAX_LENGTH
+            ),
             cv.Optional(CONF_ACCURACY_DECIMALS): validate_accuracy_decimals,
             cv.Optional(CONF_DEVICE_CLASS): validate_device_class,
             cv.Optional(CONF_STATE_CLASS): validate_state_class,
@@ -355,7 +352,11 @@ def sensor_schema(
         schema[cv.GenerateID()] = cv.declare_id(class_)
 
     for key, default, validator in [
-        (CONF_UNIT_OF_MEASUREMENT, unit_of_measurement, validate_unit_of_measurement),
+        (
+            CONF_UNIT_OF_MEASUREMENT,
+            unit_of_measurement,
+            cv.unit_of_measurement(UNIT_OF_MEASUREMENT_MAX_LENGTH),
+        ),
         (CONF_ICON, icon, validate_icon),
         (CONF_ACCURACY_DECIMALS, accuracy_decimals, validate_accuracy_decimals),
         (CONF_DEVICE_CLASS, device_class, validate_device_class),
