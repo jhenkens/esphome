@@ -103,6 +103,16 @@ enum ClimatePreset : uint8_t {
   CLIMATE_PRESET_ACTIVITY = 7,  // Update ClimatePresetMask in climate_traits.h if adding values after this
 };
 
+/// Temperature unit for display via the native API.
+/// ESPHome always stores temperatures in Celsius internally.
+enum ClimateTemperatureUnit : uint8_t {
+  /// Not configured; API clients should assume Celsius
+  CLIMATE_TEMPERATURE_UNIT_UNSET = 0,
+  CLIMATE_TEMPERATURE_UNIT_CELSIUS = 1,
+  CLIMATE_TEMPERATURE_UNIT_FAHRENHEIT = 2,
+  CLIMATE_TEMPERATURE_UNIT_KELVIN = 3,
+};
+
 enum ClimateFeature : uint32_t {
   // Reporting current temperature is supported
   CLIMATE_SUPPORTS_CURRENT_TEMPERATURE = 1 << 0,

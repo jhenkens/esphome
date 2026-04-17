@@ -230,6 +230,11 @@ WaterHeaterTraits WaterHeater::get_traits() {
     traits.set_target_temperature_step(this->visual_target_temperature_step_override_);
   }
 #endif
+#ifdef USE_WATER_HEATER_TEMPERATURE_UNIT
+  if (this->temperature_unit_override_ != WATER_HEATER_TEMPERATURE_UNIT_UNSET) {
+    traits.set_temperature_unit(this->temperature_unit_override_);
+  }
+#endif
   return traits;
 }
 
@@ -240,8 +245,13 @@ void WaterHeater::set_visual_min_temperature_override(float min_temperature_over
 void WaterHeater::set_visual_max_temperature_override(float max_temperature_override) {
   this->visual_max_temperature_override_ = max_temperature_override;
 }
-void WaterHeater::set_visual_target_temperature_step_override(float visual_target_temperature_step_override) {
-  this->visual_target_temperature_step_override_ = visual_target_temperature_step_override;
+void WaterHeater::set_visual_temperature_step_override(float target) {
+  this->visual_target_temperature_step_override_ = target;
+}
+#endif
+#ifdef USE_WATER_HEATER_TEMPERATURE_UNIT
+void WaterHeater::set_temperature_unit_override(WaterHeaterTemperatureUnit unit) {
+  this->temperature_unit_override_ = unit;
 }
 #endif
 
@@ -256,11 +266,24 @@ const LogString *water_heater_mode_to_string(WaterHeaterMode mode) {
 
 void WaterHeater::dump_traits_(const char *tag) {
   auto traits = this->get_traits();
+  const char *unit_str;
+  switch (traits.get_temperature_unit()) {
+    case WATER_HEATER_TEMPERATURE_UNIT_FAHRENHEIT:
+      unit_str = "°F";
+      break;
+    case WATER_HEATER_TEMPERATURE_UNIT_KELVIN:
+      unit_str = "K";
+      break;
+    default:
+      unit_str = "°C";
+      break;
+  }
   ESP_LOGCONFIG(tag,
-                "  Min Temperature: %.1f°C\n"
-                "  Max Temperature: %.1f°C\n"
-                "  Temperature Step: %.1f",
-                traits.get_min_temperature(), traits.get_max_temperature(), traits.get_target_temperature_step());
+                "  Min Temperature: %.1f%s\n"
+                "  Max Temperature: %.1f%s\n"
+                "  Temperature Step:",
+                traits.get_min_temperature(), unit_str, traits.get_max_temperature(), unit_str);
+  ESP_LOGCONFIG(tag, "      Target: %.1f", traits.get_target_temperature_step());
   if (traits.get_supports_two_point_target_temperature()) {
     ESP_LOGCONFIG(tag, "  Supports Two-Point Target Temperature: YES");
   }

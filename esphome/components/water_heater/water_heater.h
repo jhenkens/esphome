@@ -30,6 +30,16 @@ enum WaterHeaterMode : uint32_t {
 using WaterHeaterModeMask =
     FiniteSetMask<WaterHeaterMode, DefaultBitPolicy<WaterHeaterMode, WATER_HEATER_MODE_GAS + 1>>;
 
+/// Temperature unit for display via the native API.
+/// ESPHome always stores temperatures in Celsius internally.
+enum WaterHeaterTemperatureUnit : uint8_t {
+  /// Not configured; API clients should assume Celsius
+  WATER_HEATER_TEMPERATURE_UNIT_UNSET = 0,
+  WATER_HEATER_TEMPERATURE_UNIT_CELSIUS = 1,
+  WATER_HEATER_TEMPERATURE_UNIT_FAHRENHEIT = 2,
+  WATER_HEATER_TEMPERATURE_UNIT_KELVIN = 3,
+};
+
 /// Feature flags for water heater capabilities (matches Home Assistant WaterHeaterEntityFeature)
 enum WaterHeaterFeature : uint32_t {
   /// The water heater supports reporting the current temperature.
@@ -187,6 +197,9 @@ class WaterHeaterTraits {
   const WaterHeaterModeMask &get_supported_modes() const { return this->supported_modes_; }
   bool supports_mode(WaterHeaterMode mode) const { return this->supported_modes_.count(mode); }
 
+  WaterHeaterTemperatureUnit get_temperature_unit() const { return this->temperature_unit_; }
+  void set_temperature_unit(WaterHeaterTemperatureUnit unit) { this->temperature_unit_ = unit; }
+
  protected:
   // Ordered to minimize padding: 4-byte members first
   uint32_t feature_flags_{0};
@@ -194,6 +207,7 @@ class WaterHeaterTraits {
   float max_temperature_{0.0f};
   float target_temperature_step_{0.0f};
   WaterHeaterModeMask supported_modes_;
+  WaterHeaterTemperatureUnit temperature_unit_{WATER_HEATER_TEMPERATURE_UNIT_CELSIUS};
 };
 
 class WaterHeater : public EntityBase {
@@ -219,7 +233,10 @@ class WaterHeater : public EntityBase {
 #ifdef USE_WATER_HEATER_VISUAL_OVERRIDES
   void set_visual_min_temperature_override(float min_temperature_override);
   void set_visual_max_temperature_override(float max_temperature_override);
-  void set_visual_target_temperature_step_override(float visual_target_temperature_step_override);
+  void set_visual_temperature_step_override(float target);
+#endif
+#ifdef USE_WATER_HEATER_TEMPERATURE_UNIT
+  void set_temperature_unit_override(WaterHeaterTemperatureUnit unit);
 #endif
   virtual void control(const WaterHeaterCall &call) = 0;
 
@@ -266,6 +283,9 @@ class WaterHeater : public EntityBase {
   float visual_min_temperature_override_{NAN};
   float visual_max_temperature_override_{NAN};
   float visual_target_temperature_step_override_{NAN};
+#endif
+#ifdef USE_WATER_HEATER_TEMPERATURE_UNIT
+  WaterHeaterTemperatureUnit temperature_unit_override_{WATER_HEATER_TEMPERATURE_UNIT_UNSET};
 #endif
 
   ESPPreferenceObject pref_;

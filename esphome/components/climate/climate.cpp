@@ -507,6 +507,11 @@ ClimateTraits Climate::get_traits() {
     traits.set_visual_max_humidity(this->visual_max_humidity_override_);
   }
 #endif
+#ifdef USE_CLIMATE_TEMPERATURE_UNIT
+  if (this->temperature_unit_override_ != CLIMATE_TEMPERATURE_UNIT_UNSET) {
+    traits.set_temperature_unit(this->temperature_unit_override_);
+  }
+#endif
   return traits;
 }
 
@@ -530,6 +535,11 @@ void Climate::set_visual_min_humidity_override(float visual_min_humidity_overrid
 
 void Climate::set_visual_max_humidity_override(float visual_max_humidity_override) {
   this->visual_max_humidity_override_ = visual_max_humidity_override;
+}
+#endif
+#ifdef USE_CLIMATE_TEMPERATURE_UNIT
+void Climate::set_temperature_unit_override(ClimateTemperatureUnit temperature_unit_override) {
+  this->temperature_unit_override_ = temperature_unit_override;
 }
 #endif
 
