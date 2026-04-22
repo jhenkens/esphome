@@ -74,7 +74,7 @@ FINAL_VALIDATE_SCHEMA = cv.All(
         {
             cv.Required(CONF_ID): cv.use_id(IntegrationSensor),
             cv.Optional(CONF_ICON): cv.icon,
-            cv.Optional(CONF_UNIT_OF_MEASUREMENT): sensor.validate_unit_of_measurement,
+            cv.Optional(CONF_UNIT_OF_MEASUREMENT): cv.unit_of_measurement(),
             cv.Optional(CONF_ACCURACY_DECIMALS): sensor.validate_accuracy_decimals,
             cv.Required(CONF_SENSOR): cv.use_id(sensor.Sensor),
         },

@@ -2364,6 +2364,13 @@ def validate_source_shorthand(value):
     return SOURCE_SCHEMA(conf)
 
 
+def unit_of_measurement():
+    # Lazy load to prevent circular import
+    from esphome.core.config import UNIT_OF_MEASUREMENT_MAX_LENGTH
+
+    return All(string_strict, ByteLength(max=UNIT_OF_MEASUREMENT_MAX_LENGTH))
+
+
 SOURCE_SCHEMA = Any(
     validate_source_shorthand,
     typed_schema(

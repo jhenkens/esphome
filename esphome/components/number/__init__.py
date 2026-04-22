@@ -79,7 +79,6 @@ from esphome.const import (
     DEVICE_CLASS_WIND_SPEED,
 )
 from esphome.core import CORE, CoroPriority, coroutine_with_priority
-from esphome.core.config import UNIT_OF_MEASUREMENT_MAX_LENGTH
 from esphome.core.entity_helpers import (
     entity_duplicate_validator,
     setup_device_class,
@@ -187,11 +186,6 @@ NUMBER_OPERATION_OPTIONS = {
 }
 
 validate_device_class = cv.one_of(*DEVICE_CLASSES, lower=True, space="_")
-validate_unit_of_measurement = cv.All(
-    cv.string_strict,
-    # Keep in sync with max_data_length in api.proto
-    cv.ByteLength(max=UNIT_OF_MEASUREMENT_MAX_LENGTH),
-)
 
 _NUMBER_SCHEMA = (
     cv.ENTITY_BASE_SCHEMA.extend(web_server.WEBSERVER_SORTING_SCHEMA)
@@ -209,7 +203,7 @@ _NUMBER_SCHEMA = (
                 },
                 cv.has_at_least_one_key(CONF_ABOVE, CONF_BELOW),
             ),
-            cv.Optional(CONF_UNIT_OF_MEASUREMENT): validate_unit_of_measurement,
+            cv.Optional(CONF_UNIT_OF_MEASUREMENT): cv.unit_of_measurement(),
             cv.Optional(CONF_MODE, default="AUTO"): cv.enum(NUMBER_MODES, upper=True),
             cv.Optional(CONF_DEVICE_CLASS): validate_device_class,
         }
@@ -235,7 +229,11 @@ def number_schema(
         (CONF_ICON, icon, cv.icon),
         (CONF_ENTITY_CATEGORY, entity_category, cv.entity_category),
         (CONF_DEVICE_CLASS, device_class, validate_device_class),
-        (CONF_UNIT_OF_MEASUREMENT, unit_of_measurement, validate_unit_of_measurement),
+        (
+            CONF_UNIT_OF_MEASUREMENT,
+            unit_of_measurement,
+            cv.unit_of_measurement(),
+        ),
     ]:
         if default is not cv.UNDEFINED:
             schema[cv.Optional(key, default=default)] = validator
